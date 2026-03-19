@@ -31,8 +31,11 @@ uv run python profile_run.py
 
 ## Profiling Results
 
+See **[ANALYSIS.md](ANALYSIS.md)** for the full profiling analysis including memory breakdown,
+operator-level performance, optimization recommendations, and production estimates.
+
 Pre-computed profiling traces are available on Hugging Face:
-👉 **https://huggingface.co/Yi30/sageattn-xpu-profiling**
+**https://huggingface.co/Yi30/sageattn-xpu-profiling**
 
 Download `profile_trace.json.gz` and open it in `chrome://tracing` (Chrome handles `.json.gz` natively).
 
