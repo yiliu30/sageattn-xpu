@@ -1,0 +1,20 @@
+# Virtual environments
+.venv/
+__pycache__/
+*.pyc
+
+# UV lock (large, reproducible from pyproject.toml)
+uv.lock
+
+# Output artifacts
+*.mp4
+*.avi
+*.mov
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
