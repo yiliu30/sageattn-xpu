@@ -16,6 +16,11 @@ making it an ideal candidate for SageAttention kernel optimization. Secondary
 bottlenecks include tensor concatenation (`aten::cat`) with high CPU overhead
 and dtype conversion (`aten::copy_`) consuming significant wall-clock time.
 
+Follow-up benchmarking of FlexAttention and `torch.compile` (Section 9) showed that
+**FlexAttention regresses 2.7× on XPU** (unfused fallback), confirming that a custom
+SageAttention kernel is the only viable attention optimization path. `torch.compile`
+provides a **free 5% end-to-end speedup** from op fusion.
+
 ---
 
 ## 2. Memory Profile
@@ -228,7 +233,73 @@ operations into fewer, larger kernels.
 
 ---
 
-## 9. Environment Details
+## 9. Optimization Benchmark Results
+
+To validate recommendations P0 (attention kernel replacement) and P1 (`torch.compile`),
+we benchmarked four configurations on the same pipeline and hardware:
+
+| Config | Mean (s) | Std (s) | Peak Mem (MB) | Speedup |
+|--------|----------|---------|---------------|---------|
+| **baseline** (SDPA, uncompiled) | 35.21 | 0.00 | 18,861 | 1.00× |
+| **flex_attention** | 93.97 | 2.15 | 18,859 | 0.37× |
+| **torch.compile** (SDPA + compiled transformer) | 33.53 | 0.02 | 18,859 | **1.05×** |
+| **flex_attention + compile** | 90.79 | 0.01 | 18,859 | 0.39× |
+
+> Each config: 1 warmup run (JIT compilation) + 3 timed runs. Mean ± std reported
+> for timed runs only. Peak memory is the max across timed runs.
+
+### 9.1 FlexAttention Is Not Viable on XPU (0.37×)
+
+`torch.nn.attention.flex_attention` — PyTorch's fused attention API — was tested as a
+potential drop-in replacement for `F.scaled_dot_product_attention` in the
+`CogVideoXAttnProcessor2_0`. Despite being wrapped in `torch.compile()`, FlexAttention
+on the XPU backend falls back to an **unfused execution path** that is **2.7× slower**
+than the native SDPA kernel.
+
+Per-step denoising time increased from **5.00 s → 19.3 s**, confirming the regression
+is in the attention computation itself, not in surrounding ops. The unfused fallback
+decomposes attention into explicit Q×K^T matmul → softmax → attn×V, losing the
+memory-efficient fused kernel that SDPA provides.
+
+**Conclusion:** FlexAttention is not a viable shortcut for attention optimization on
+Intel XPU. A custom kernel (SageAttention) remains the correct approach.
+
+### 9.2 torch.compile Provides a Modest 5% Speedup (1.05×)
+
+Compiling the transformer with `torch.compile(backend='inductor')` reduced per-step
+denoising time from **5.00 s → 4.59 s** — a consistent **8% per-step improvement**
+that translates to a **5% end-to-end speedup** (VAE decode is uncompiled).
+
+The gain comes from fusing the "long tail" of small element-wise ops identified in
+Section 4.2 (§ Elementwise: `aten::mul`, `aten::add`, `aten::gelu` = 2.65 s combined).
+The inductor backend merges these into fewer, larger XPU kernels, reducing launch
+overhead and improving utilization.
+
+The first inference step after compilation takes ~70 s (JIT warmup), but all
+subsequent runs are stable at 33.5 s. Memory usage is unchanged.
+
+**Conclusion:** `torch.compile` is a free lunch — recommended as a baseline
+optimization for production inference (P1 confirmed).
+
+### 9.3 Memory Is Unchanged Across All Configs
+
+All four configurations show identical peak memory (~18,859 MB). Neither FlexAttention
+nor `torch.compile` introduces additional memory overhead, confirming that any
+optimization gains are purely in compute efficiency.
+
+### 9.4 Updated Recommendations
+
+| Priority | Optimization | Status | Finding |
+|----------|-------------|--------|---------|
+| **P0** | SageAttention custom XPU kernels | **Confirmed needed** | FlexAttention fallback is 2.7× slower — no shortcut exists |
+| **P1** | `torch.compile()` | **Validated: +5%** | Free 5% speedup, no memory cost, recommended for production |
+| ~~P0-alt~~ | ~~FlexAttention as SDPA replacement~~ | **Rejected** | 2.7× regression due to unfused XPU fallback |
+
+> Benchmark script: `bench_optimizations.py` (same directory)
+
+---
+
+## 10. Environment Details
 
 ```
 PyTorch           : 2.10.0+xpu
@@ -243,7 +314,7 @@ Pipeline          : diffusers.CogVideoXPipeline
 
 ---
 
-## 10. Trace File
+## 11. Trace File
 
 The full operator-level trace is available for interactive exploration:
 
