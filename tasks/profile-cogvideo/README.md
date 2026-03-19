@@ -29,11 +29,18 @@ uv run python profile_run.py
 | `profile_trace.json` | Chrome trace — operator-level timeline of the denoising loop |
 | `profile_output.mp4` | Video from the Phase 1 inference run (4 steps, for sanity check) |
 
+## Profiling Results
+
+Pre-computed profiling traces are available on Hugging Face:
+👉 **https://huggingface.co/Yi30/sageattn-xpu-profiling**
+
+Download `profile_trace.json.gz` and open it in `chrome://tracing` (Chrome handles `.json.gz` natively).
+
 ## Viewing the Trace
 
 1. Open Google Chrome
 2. Navigate to `chrome://tracing`
-3. Click **Load** and select `profile_trace.json`
+3. Click **Load** and select `profile_trace.json` (or `.json.gz`)
 4. Use WASD keys to navigate the timeline
 
 The trace shows CPU and XPU operator execution, memory allocations, and kernel launches. Look for:
