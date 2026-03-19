@@ -253,16 +253,47 @@ we benchmarked four configurations on the same pipeline and hardware:
 `torch.nn.attention.flex_attention` — PyTorch's fused attention API — was tested as a
 potential drop-in replacement for `F.scaled_dot_product_attention` in the
 `CogVideoXAttnProcessor2_0`. Despite being wrapped in `torch.compile()`, FlexAttention
-on the XPU backend falls back to an **unfused execution path** that is **2.7× slower**
-than the native SDPA kernel.
+on the XPU backend is **2.5× slower** than the native SDPA kernel (95.4 s vs 38.1 s
+wall-clock under the profiler).
 
-Per-step denoising time increased from **5.00 s → 19.3 s**, confirming the regression
-is in the attention computation itself, not in surrounding ops. The unfused fallback
-decomposes attention into explicit Q×K^T matmul → softmax → attn×V, losing the
-memory-efficient fused kernel that SDPA provides.
+#### Root cause: CPU overhead, not GPU regression
 
-**Conclusion:** FlexAttention is not a viable shortcut for attention optimization on
-Intel XPU. A custom kernel (SageAttention) remains the correct approach.
+Detailed profiling reveals the **XPU operator times are virtually identical** between
+baseline and FlexAttention — the regression is entirely on the CPU side:
+
+| Operator | Baseline XPU | FlexAttn XPU | Delta | Calls |
+|----------|-------------|-------------|-------|-------|
+| GEMM (`gemm_kernel`) | 2,296 ms | 2,238 ms | −3% | 1,412 |
+| `aten::addmm` | 1,566 ms | 1,507 ms | −4% | 980 |
+| `aten::mm` | 568 ms | 568 ms | 0% | 336 |
+| `aten::bmm` | 162 ms | 162 ms | 0% | 96 |
+| `aten::mul` | 890 ms | 897 ms | +1% | 4,785 |
+| `aten::cat` | 836 ms | 876 ms | +5% | 2,675 |
+| `aten::copy_` | 660 ms | 779 ms | +18% | 11,369 |
+| `aten::softmax` | 81 ms | 81 ms | 0% | 48 |
+| **Total self XPU time** | **7,236 ms** | **7,763 ms** | **+7%** | |
+
+The total self XPU time increased by only 7% (527 ms), yet wall-clock time increased
+by **57.3 s** (38.1 → 95.4 s). This means **~56.8 s of additional time is pure CPU
+overhead** — from `torch.compile`'s Triton codegen, graph tracing, and the Python
+dispatch overhead of the FlexAttention fallback path.
+
+The FlexAttention path also introduces new operators not present in baseline:
+- `aten::convolution` / `aten::conv3d` (6,322 calls, 209 ms XPU) — induced by the
+  compiled attention graph
+- `aten::group_norm` (1,998 calls, 183 ms XPU) — additional normalization in the
+  compiled path
+
+Per-step denoising time increased from **5.00 s → 19.3 s**, with the gap dominated
+by CPU-side dispatch and JIT overhead rather than slower GPU kernels.
+
+**Conclusion:** FlexAttention on XPU does not produce efficient fused GPU kernels.
+The compiled path falls back to decomposed attention with massive CPU overhead from
+Triton codegen and Python dispatch. A native XPU kernel (SageAttention) remains the
+only viable approach for attention optimization.
+
+> Profiler traces: `profile_flex_baseline.json.gz`, `profile_flex_attention.json.gz`
+> Profiling script: `profile_flex.py`
 
 ### 9.2 torch.compile Provides a Modest 5% Speedup (1.05×)
 
