@@ -193,15 +193,15 @@ def phase3_summary(t_total: float):
     print("Phase 3: Summary")
     print("=" * 72)
 
-    overall_peak_alloc = mb(torch.xpu.max_memory_allocated())
-    overall_peak_res = mb(torch.xpu.max_memory_reserved())
+    phase2_peak_alloc = mb(torch.xpu.max_memory_allocated())
+    phase2_peak_res = mb(torch.xpu.max_memory_reserved())
 
-    print(f"  Overall peak memory allocated : {overall_peak_alloc:>10.1f} MB")
-    print(f"  Overall peak memory reserved  : {overall_peak_res:>10.1f} MB")
-    print(f"  Total wall-clock time         : {t_total:>10.2f} s")
-    print(f"  Inference steps               : {NUM_INFERENCE_STEPS}")
-    print(f"  Frame count                   : {NUM_FRAMES}")
-    print(f"  Trace file                    : {TRACE_OUTPUT}")
+    print(f"  Peak memory allocated (Phase 2) : {phase2_peak_alloc:>10.1f} MB")
+    print(f"  Peak memory reserved (Phase 2)  : {phase2_peak_res:>10.1f} MB")
+    print(f"  Total wall-clock time           : {t_total:>10.2f} s")
+    print(f"  Inference steps                 : {NUM_INFERENCE_STEPS}")
+    print(f"  Frame count                     : {NUM_FRAMES}")
+    print(f"  Trace file                      : {TRACE_OUTPUT}")
     print()
 
 
