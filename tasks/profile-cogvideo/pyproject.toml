@@ -1,0 +1,28 @@
+[project]
+name = "profile-cogvideo"
+version = "0.1.0"
+description = "Profiling task for CogVideoX-2B inference on Intel XPU"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "accelerate>=1.13.0",
+    "diffusers>=0.37.0",
+    "imageio>=2.37.3",
+    "imageio-ffmpeg>=0.6.0",
+    "protobuf>=7.34.0",
+    "pytorch-triton-xpu>=3.5.0",
+    "sentencepiece>=0.2.1",
+    "torch>=2.10.0",
+    "transformers>=5.3.0",
+    "triton-xpu>=3.6.0",
+]
+
+[[tool.uv.index]]
+name = "pytorch-xpu"
+url = "https://download.pytorch.org/whl/xpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-xpu" }
+pytorch-triton-xpu = { index = "pytorch-xpu" }
+triton-xpu = { index = "pytorch-xpu" }
